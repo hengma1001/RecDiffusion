@@ -5,7 +5,7 @@ Exact equivariance to :math:`E(3)`
 version of february 2021
 """
 import math
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 
 import torch
 from torch import nn
