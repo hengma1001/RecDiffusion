@@ -49,7 +49,7 @@ def extract(a, t, x_shape):
         raise TypeError("t must be int or a list of int")
 
 
-class diffusion_sample(object):
+class diffusion_sampler(object):
     def __init__(
         self,
         time_step: int,
@@ -73,6 +73,7 @@ class diffusion_sample(object):
             betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
         )
 
+    @torch.no_grad()
     def q_sample(self, x_start, t, noise=None):
         # forward diffusion (using the nice property)
         if noise is None:
