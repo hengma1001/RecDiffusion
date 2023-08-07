@@ -7,14 +7,18 @@ version of february 2021
 import math
 from typing import Any, Dict, Optional
 
+import lightning as L
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from e3nn import o3
 from e3nn.math import soft_one_hot_linspace
 from e3nn.nn import ExtractIr, FullyConnectedNet, Gate
 from e3nn.o3 import FullyConnectedTensorProduct, TensorProduct
 from e3nn.util.jit import compile_mode
+
+from .diffusion import diffusion_sampler
 
 # , einsum
 # from e3nn.nn.models.gate_points_2101 import Network
@@ -370,7 +374,7 @@ class Network(torch.nn.Module):
         )
 
     def forward(
-        self, data: Dict[str, torch.Tensor], time: Optional[int] = None
+        self, data: Dict[str, torch.Tensor], time: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """evaluate the network
 
@@ -440,3 +444,69 @@ class Network(torch.nn.Module):
             )
         else:
             return x
+
+
+class e3_diffusion(L.LightningModule):
+    def __init__(
+        self,
+        time_step: int,
+        scheduler: "str",
+        weight_fill: float = 0.005,
+        **model_kwargs: Dict
+    ) -> None:
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.time_step = time_step
+        self.diffu_sampler = diffusion_sampler(time_step, scheduler)
+        self.weight_fill = weight_fill
+        self.model = Network(**model_kwargs)
+        self._init_model()
+
+    def forward(
+        self, data: Dict[str, torch.Tensor], time: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return self.model(data, time)
+
+    def _init_model(self):
+        for _, param in self.named_parameters():
+            param.data.fill_(self.weight_fill)
+
+    def _get_loss(self, data):
+        device = self.device
+        noise = torch.randn_like(data["pos"])
+
+        time = torch.randint(self.time_step, (1,))
+        x_noisy = self.diffu_sampler.q_sample(data["pos"], int(time[0]), noise=noise)
+        data["pos"] = x_noisy
+        predicted_noise = self.forward(data.to(device), time.to(device))
+
+        return F.mse_loss(noise, predicted_noise) / len(noise)
+
+    def configure_optimizers(self) -> Dict:
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        # Using a scheduler is optional but can be helpful.
+        # The scheduler reduces the LR if the validation performance hasn't improved for the last N epochs
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.2, patience=20, min_lr=5e-5
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "val_loss",
+        }
+
+    def training_step(self, batch, batch_idx):
+        loss = self._get_loss(batch)
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self._get_loss(batch)
+        self.log("validation_loss", loss)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss = self._get_loss(batch)
+        self.log("test_loss", loss)
+        return loss
