@@ -4,6 +4,7 @@ import torch_geometric
 
 import numpy as np
 import MDAnalysis as mda
+from tqdm import tqdm
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 
@@ -16,9 +17,11 @@ def pdb_to_dict(
 ) -> dict:
     data = {}
 
+    data["sys_name"] = os.path.basename(os.path.dirname(prot_pdb))
     prot_u = mda.Universe(prot_pdb)
     prot_u.atoms.names = [name.lstrip("0123456789") for name in prot_u.atoms.names]
     protein_noH = prot_u.select_atoms("protein and not name H*")
+    # print(prot_pdb, protein_noH.n_atoms, protein_noH.segments)
 
     lig_u = mda.Universe(lig_mol2)
     lig_noH = lig_u.select_atoms("not name H*")
@@ -52,7 +55,8 @@ def position_to_pdb(prot_pdb, lig_mol2, pdb_output, positions):
 def pdbs_to_dbs(comp_paths):
     prot_pdbs, lig_mols = path_to_pdb(comp_paths)
     dbs = [
-        pdb_to_dict(prot, lig, node_attr=True) for prot, lig in zip(prot_pdbs, lig_mols)
+        pdb_to_dict(prot, lig, node_attr=True)
+        for prot, lig in tqdm(zip(prot_pdbs, lig_mols), total=len(prot_pdbs))
     ]
     full_voca = np.concatenate([data["res_atom_name"] for data in dbs])
     label_encoder = preprocessing.LabelEncoder()
@@ -78,8 +82,8 @@ def path_to_pdb(comp_paths):
         prot_pdb = f"{comp_path}/{label}_protein.pdb"
         lig_mol = f"{comp_path}/{label}_ligand.mol2"
 
-        assert os.path.exists(prot_pdb)
-        assert os.path.exists(lig_mol)
+        assert os.path.exists(prot_pdb), f"Missing protein {prot_pdb}"
+        assert os.path.exists(lig_mol), f"Missing ligand {lig_mol}"
 
         prot_pdbs.append(prot_pdb)
         lig_mols.append(lig_mol)
