@@ -484,7 +484,7 @@ class e3_diffusion(L.LightningModule):
         return F.mse_loss(noise, predicted_noise) / len(noise)
 
     def configure_optimizers(self) -> Dict:
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         # Using a scheduler is optional but can be helpful.
         # The scheduler reduces the LR if the validation performance hasn't improved for the last N epochs
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
