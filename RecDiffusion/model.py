@@ -20,13 +20,6 @@ from e3nn.util.jit import compile_mode
 
 from .diffusion import diffusion_sampler
 
-# , einsum
-# from e3nn.nn.models.gate_points_2101 import Network
-
-# model = e3nn.nn.models.gate_points_2101.Network(
-#     **model_kwargs
-# )  # initializing model with parameters above
-
 
 class SinusoidalPositionEmbeddings(nn.Module):
     def __init__(self, dim):
@@ -257,11 +250,11 @@ class Network(torch.nn.Module):
 
     def __init__(
         self,
-        irreps_in: o3.Irreps,
-        irreps_hidden: o3.Irreps,
-        irreps_out: o3.Irreps,
-        irreps_node_attr: o3.Irreps,
-        irreps_edge_attr: o3.Irreps,
+        irreps_in: o3.Irreps | str,
+        irreps_hidden: o3.Irreps | str,
+        irreps_out: o3.Irreps | str,
+        irreps_node_attr: o3.Irreps | str,
+        irreps_edge_attr: o3.Irreps | int,
         layers: int,
         max_radius: float,
         number_of_basis: int,
@@ -293,7 +286,8 @@ class Network(torch.nn.Module):
             if irreps_node_attr is not None
             else o3.Irreps("0e")
         )
-        self.irreps_edge_attr = o3.Irreps(irreps_edge_attr)
+
+        self.irreps_edge_attr = o3.Irreps.spherical_harmonics(irreps_edge_attr)
 
         self.input_has_node_in = irreps_in is not None
         self.input_has_node_attr = irreps_node_attr is not None
@@ -503,7 +497,7 @@ class e3_diffusion(L.LightningModule):
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
-            "monitor": "val_loss",
+            "monitor": "validation_loss",
         }
 
     def training_step(self, batch, batch_idx):

@@ -12,6 +12,7 @@ from sklearn.model_selection import train_test_split
 def pdb_to_dict(
     prot_pdb,
     lig_mol2,
+    prot_sel="protein and not name H*",
     # input_feature=None,
     node_attr=None,
 ) -> dict:
@@ -20,7 +21,7 @@ def pdb_to_dict(
     data["sys_name"] = os.path.basename(os.path.dirname(prot_pdb))
     prot_u = mda.Universe(prot_pdb)
     prot_u.atoms.names = [name.lstrip("0123456789") for name in prot_u.atoms.names]
-    protein_noH = prot_u.select_atoms("protein and not name H*")
+    protein_noH = prot_u.select_atoms(prot_sel)
     # print(prot_pdb, protein_noH.n_atoms, protein_noH.segments)
 
     lig_u = mda.Universe(lig_mol2)
@@ -39,10 +40,16 @@ def pdb_to_dict(
     return data
 
 
-def position_to_pdb(prot_pdb, lig_mol2, pdb_output, positions):
+def position_to_pdb(
+    prot_pdb,
+    lig_mol2,
+    pdb_output,
+    positions,
+    prot_sel="protein and not name H*",
+):
     prot_u = mda.Universe(prot_pdb)
     prot_u.atoms.names = [name.lstrip("0123456789") for name in prot_u.atoms.names]
-    protein_noH = prot_u.select_atoms("protein and not name H*")
+    protein_noH = prot_u.select_atoms(prot_sel)
 
     lig_u = mda.Universe(lig_mol2)
     lig_noH = lig_u.select_atoms("not name H*")
@@ -52,10 +59,10 @@ def position_to_pdb(prot_pdb, lig_mol2, pdb_output, positions):
     full_u.atoms.write(pdb_output)
 
 
-def pdbs_to_dbs(comp_paths):
+def pdbs_to_dbs(comp_paths, prot_sel="protein and not name H*"):
     prot_pdbs, lig_mols = path_to_pdb(comp_paths)
     dbs = [
-        pdb_to_dict(prot, lig, node_attr=True)
+        pdb_to_dict(prot, lig, prot_sel=prot_sel, node_attr=True)
         for prot, lig in tqdm(zip(prot_pdbs, lig_mols), total=len(prot_pdbs))
     ]
     full_voca = np.concatenate([data["res_atom_name"] for data in dbs])
@@ -91,8 +98,10 @@ def path_to_pdb(comp_paths):
     return prot_pdbs, lig_mols
 
 
-def pdbs_to_datasets(comp_paths, split_ratio=[0.7, 0.2, 0.1]):
-    dbs, full_voca_size = pdbs_to_dbs(comp_paths)
+def pdbs_to_datasets(
+    comp_paths, prot_sel="protein and not name H*", split_ratio=[0.7, 0.2, 0.1]
+):
+    dbs, full_voca_size = pdbs_to_dbs(comp_paths, prot_sel=prot_sel)
     train, val_test = train_test_split(dbs, train_size=int(split_ratio[0] * len(dbs)))
     val, test = train_test_split(val_test, train_size=int(split_ratio[1] * len(dbs)))
 

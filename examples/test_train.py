@@ -32,13 +32,11 @@ comp_paths = glob.glob("../data/refined-set/2w*")
 train, val, test, full_voca_size = pdbs_to_datasets(comp_paths)
 
 model_kwargs = {
-    "irreps_in": e3nn.o3.Irreps("16x0e"),  # no input features
-    "irreps_hidden": e3nn.o3.Irreps("32x0e + 32x0o + 32x1e + 32x1o"),  # hyperparameter
-    "irreps_out": e3nn.o3.Irreps(
-        "1x1o"
-    ),  # 12 vectors out, but only 1 vector out per input
-    "irreps_node_attr": e3nn.o3.Irreps("10x0e"),
-    "irreps_edge_attr": e3nn.o3.Irreps.spherical_harmonics(3),
+    "irreps_in": "16x0e",  # no input features
+    "irreps_hidden": "32x0e + 32x0o + 32x1e + 32x1o",  # hyperparameter
+    "irreps_out": "1x1o",  # 12 vectors out, but only 1 vector out per input
+    "irreps_node_attr": "10x0e",
+    "irreps_edge_attr": 3,
     "layers": 3,  # hyperparameter
     "max_radius": 3.5,
     "number_of_basis": 10,
