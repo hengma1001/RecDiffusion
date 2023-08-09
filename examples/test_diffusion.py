@@ -2,14 +2,11 @@ import torch
 import e3nn
 import glob
 import sys
-import torch
-from torch.profiler import profile, record_function, ProfilerActivity
 
 sys.path.append("../")
 
 from RecDiffusion.model import e3_diffusion
-from RecDiffusion.preprocessing import pdbs_to_datasets, pdbs_to_dbs
-from RecDiffusion.training import train_diffu
+from RecDiffusion.preprocessing import pdbs_to_dbs
 from typing import Dict, Any
 from pydantic import BaseModel, root_validator
 
@@ -28,8 +25,11 @@ from pydantic import BaseModel, root_validator
 time_step = 500
 scheduler = "linear_beta_schedule"
 
+prot_pdb = "../data/refined-set/2wed/2wed_protein.pdb"
+lig_mol2 = "../data/refined-set/2wed/2wed_ligand.mol2"
+
 comp_paths = glob.glob("../data/refined-set/2w*")
-train, val, test, full_voca_size = pdbs_to_datasets(comp_paths)
+labels, full_voca_size = pdbs_to_dbs(comp_paths)
 
 model_kwargs = {
     "irreps_in": e3nn.o3.Irreps("16x0e"),  # no input features
@@ -52,21 +52,26 @@ model_kwargs = {
     "reduce_output": False,  # setting this to true would give us one scalar as an output.
 }
 
-model = e3_diffusion(time_step, scheduler, **model_kwargs).cuda()
+device = "cuda"
+model = e3_diffusion(time_step, scheduler, **model_kwargs).to(device)
 
 
-# comp_paths = glob.glob("../data/refined-set/2w*")
-# labels = pdbs_to_dbs(comp_paths)
+eta = 1e-4
+optimizer = torch.optim.Adam(model.parameters(), lr=eta)
+optimizer.zero_grad()
 
-# time = torch.randint(300, (1,)).cuda()
+# time = torch.randint(300, (1,)).to(device)
 # print(time)
-# print(model(labels[0].cuda(), time))
+# with torch.no_grad():
+#     print(model(labels[0].to(device), time))
 
-model, result = train_diffu(model, train, val, test, n_gpus=1)
-# with profile(
-#     activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-#     profile_memory=True,
-#     record_shapes=True,
-# ) as prof:
-#     with record_function("model_inference"):
-#         model._get_loss(labels[0].cuda())
+
+def train_step(label):
+    loss = model._get_loss(label.to(device))
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+
+
+loss = model._get_loss(labels[0].to(device))
+print(loss)
