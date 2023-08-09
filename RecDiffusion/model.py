@@ -269,6 +269,8 @@ class Network(torch.nn.Module):
         radial_neurons: int,
         num_neighbors: float,
         num_nodes: float,
+        node_attr_n_kind: Optional[int] = None,
+        node_attr_emb_dim: Optional[int] = None,
         time_emb_dim: Optional[int] = None,
         reduce_output: bool = True,
     ) -> None:
@@ -277,6 +279,8 @@ class Network(torch.nn.Module):
         self.number_of_basis = number_of_basis
         self.num_neighbors = num_neighbors
         self.num_nodes = num_nodes
+        self.node_attr_n_kind = node_attr_n_kind
+        self.node_attr_emb_dim = node_attr_emb_dim
         self.time_emb_dim = time_emb_dim
         self.reduce_output = reduce_output
 
@@ -320,6 +324,11 @@ class Network(torch.nn.Module):
                 nn.Linear(dim, time_dim),
                 nn.GELU(),
                 nn.Linear(time_dim, time_dim),
+            )
+
+        if self.node_attr_emb_dim:
+            self.node_attr_emb = nn.Embedding(
+                self.node_attr_n_kind, self.node_attr_emb_dim
             )
 
         for _ in range(layers):
@@ -424,8 +433,9 @@ class Network(torch.nn.Module):
             assert self.irreps_in is None
             x = data["pos"].new_ones((data["pos"].shape[0], 1))
 
-        if self.input_has_node_attr and "z" in data:
-            z = data["z"]
+        if self.input_has_node_attr and "z" in data and self.node_attr_emb_dim:
+            z = self.node_attr_emb(data["z"])
+            z = torch.squeeze(z)
         else:
             assert self.irreps_node_attr == o3.Irreps("0e")
             z = data["pos"].new_ones((data["pos"].shape[0], 1))

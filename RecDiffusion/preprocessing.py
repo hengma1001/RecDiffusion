@@ -59,6 +59,7 @@ def pdbs_to_dbs(comp_paths):
         for prot, lig in tqdm(zip(prot_pdbs, lig_mols), total=len(prot_pdbs))
     ]
     full_voca = np.concatenate([data["res_atom_name"] for data in dbs])
+    full_voca_size = len(set(full_voca))
     label_encoder = preprocessing.LabelEncoder()
     label_encoder.fit(full_voca)
 
@@ -71,7 +72,7 @@ def pdbs_to_dbs(comp_paths):
             ),
         )
         dbs_refined.append(data)
-    return dbs_refined
+    return dbs_refined, full_voca_size
 
 
 def path_to_pdb(comp_paths):
@@ -91,7 +92,7 @@ def path_to_pdb(comp_paths):
 
 
 def pdbs_to_datasets(comp_paths, split_ratio=[0.7, 0.2, 0.1]):
-    dbs = pdbs_to_dbs(comp_paths)
+    dbs, full_voca_size = pdbs_to_dbs(comp_paths)
     train, val_test = train_test_split(dbs, train_size=int(split_ratio[0] * len(dbs)))
     val, test = train_test_split(val_test, train_size=int(split_ratio[1] * len(dbs)))
 
@@ -99,7 +100,7 @@ def pdbs_to_datasets(comp_paths, split_ratio=[0.7, 0.2, 0.1]):
     val = torch_geometric.loader.DataLoader(val, batch_size=1, shuffle=True)
     test = torch_geometric.loader.DataLoader(test, batch_size=1, shuffle=True)
 
-    return train, val, test
+    return train, val, test, full_voca_size
 
 
 # feat = torch.from_numpy(features)  # convert to pytorch tensors
