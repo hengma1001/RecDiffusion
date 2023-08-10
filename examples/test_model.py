@@ -48,6 +48,5 @@ data["pos"] = torch.rand([29, 3]).cuda()
 # data['z'] = torch.randint(1, 100, (29, 1))
 data["z"] = torch.rand([29, 19]).cuda()
 time = torch.randint(300, (1,)).cuda()
-
 print(time)
 print(model(data, time))

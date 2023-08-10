@@ -38,7 +38,7 @@ lig_mol2 = "../data/refined-set/2wed/2wed_ligand.mol2"
 noise_lvls = [10, 20, 40, 100, 150, 200, 250, 300, 400, 500]
 data = pdb_to_dict(prot_pdb, lig_mol2, node_attr=True)
 
-sampling = diffusion_sample(timesteps)
+sampling = diffusion_sampler(timesteps)
 for t in noise_lvls:
     save_pdb = f"test_{t:03}.pdb"
     positions = sampling.q_sample(data["pos"], t - 1)
