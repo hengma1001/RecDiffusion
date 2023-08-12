@@ -59,10 +59,10 @@ def position_to_pdb(
     full_u.atoms.write(pdb_output)
 
 
-def pdbs_to_dbs(comp_paths, prot_sel="protein and not name H*"):
+def pdbs_to_dbs(comp_paths, **kwargs):
     prot_pdbs, lig_mols = path_to_pdb(comp_paths)
     dbs = [
-        pdb_to_dict(prot, lig, prot_sel=prot_sel, node_attr=True)
+        pdb_to_dict(prot, lig, **kwargs)
         for prot, lig in tqdm(zip(prot_pdbs, lig_mols), total=len(prot_pdbs))
     ]
     full_voca = np.concatenate([data["res_atom_name"] for data in dbs])
@@ -98,10 +98,8 @@ def path_to_pdb(comp_paths):
     return prot_pdbs, lig_mols
 
 
-def pdbs_to_datasets(
-    comp_paths, prot_sel="protein and not name H*", split_ratio=[0.7, 0.2, 0.1]
-):
-    dbs, full_voca_size = pdbs_to_dbs(comp_paths, prot_sel=prot_sel)
+def pdbs_to_datasets(comp_paths, split_ratio=[0.7, 0.2, 0.1], **kwargs):
+    dbs, full_voca_size = pdbs_to_dbs(comp_paths, **kwargs)
     train, val_test = train_test_split(dbs, train_size=int(split_ratio[0] * len(dbs)))
     val, test = train_test_split(val_test, train_size=int(split_ratio[1] * len(dbs)))
 

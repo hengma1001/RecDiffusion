@@ -470,22 +470,26 @@ class e3_diffusion(L.LightningModule):
     def forward(
         self, data: Dict[str, torch.Tensor], time: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return self.model(data, time)
+        results = self.model(data, time)
+        torch.cuda.empty_cache()
+        return results
 
     def _init_model(self):
         for _, param in self.named_parameters():
             param.data.fill_(self.weight_fill)
 
     def _get_loss(self, data):
-        device = self.device
-        noise = torch.randn_like(data["pos"])
+        predicted = self.forward(data)
+        return F.mse_loss(data.pos, predicted)
+        # device = self.device
+        # noise = torch.randn_like(data["pos"])
 
-        time = torch.randint(self.time_step, (1,))
-        x_noisy = self.diffu_sampler.q_sample(data["pos"], int(time[0]), noise=noise)
-        data["pos"] = x_noisy
-        predicted_noise = self.forward(data.to(device), time.to(device))
+        # time = torch.randint(self.time_step, (1,))
+        # x_noisy = self.diffu_sampler.q_sample(data["pos"], int(time[0]), noise=noise)
+        # data["pos"] = x_noisy
+        # predicted_noise = self.forward(data.to(device), time.to(device))
 
-        return F.mse_loss(noise, predicted_noise) / len(noise)
+        # return F.mse_loss(noise, predicted_noise) / len(noise)
 
     def configure_optimizers(self) -> Dict:
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
