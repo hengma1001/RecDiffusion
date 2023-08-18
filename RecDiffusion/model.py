@@ -381,8 +381,8 @@ class Network(torch.nn.Module):
     def forward(
         self,
         data: Dict[str, torch.Tensor],
-        pos: Optional[torch.Tensor] = None,
         time: Optional[torch.Tensor] = None,
+        pos: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """evaluate the network
 
@@ -486,8 +486,8 @@ class e3_diffusion(L.LightningModule):
     def forward(
         self,
         data: Dict[str, torch.Tensor],
-        pos: Optional[torch.Tensor] = None,
         time: Optional[torch.Tensor] = None,
+        pos: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """evaluate the network
 
@@ -501,7 +501,7 @@ class e3_diffusion(L.LightningModule):
             - ``batch`` the graph to which the node belong, optional
         time : `torch.Tensor` (optional)
         """
-        results = self.model(data, pos, time=time)
+        results = self.model(data, time, pos)
         torch.cuda.empty_cache()
         return results
 
@@ -519,7 +519,9 @@ class e3_diffusion(L.LightningModule):
             time = torch.Tensor(time).to(device)
         x_noisy = self.diffu_sampler.q_sample(data["pos"], int(time[0]), noise=noise)
         predicted_noise = self.forward(
-            data.to(device), x_noisy.to(device), time=time.to(device)
+            data.to(device),
+            time.to(device),
+            x_noisy.to(device),
         )
         self.log("sample time", int(time[0]))
         return F.mse_loss(noise, predicted_noise) / len(noise)
