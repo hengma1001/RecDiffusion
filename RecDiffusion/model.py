@@ -9,29 +9,29 @@ from typing import Any, Dict, Optional
 
 import lightning as L
 import torch
-from torch import nn
 import torch.nn.functional as F
-
 from e3nn import o3
 from e3nn.math import soft_one_hot_linspace
 from e3nn.nn import ExtractIr, FullyConnectedNet, Gate
 from e3nn.o3 import FullyConnectedTensorProduct, TensorProduct
 from e3nn.util.jit import compile_mode
+from torch import nn
 
 from .diffusion import diffusion_sampler
 
 
 class SinusoidalPositionEmbeddings(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim: int, dropout: float = 0.1, max_len: int = 5000):
         super().__init__()
-        self.dim = dim
+        self.dropout = nn.Dropout(p=dropout)
+
+        half_dim = dim // 2
+        embeddings = math.log(10000) / (half_dim - 1)
+        self.embeddings = torch.exp(torch.arange(half_dim) * -embeddings)
 
     def forward(self, time):
         device = time.device
-        half_dim = self.dim // 2
-        embeddings = math.log(10000) / (half_dim - 1)
-        embeddings = torch.exp(torch.arange(half_dim, device=device) * -embeddings)
-        embeddings = time[:, None] * embeddings[None, :]
+        embeddings = time[:, None] * self.embeddings[None, :].to(device)
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
 
@@ -265,6 +265,7 @@ class Network(torch.nn.Module):
         node_attr_n_kind: Optional[int] = None,
         node_attr_emb_dim: Optional[int] = None,
         time_emb_dim: Optional[int] = None,
+        radius_decay: Optional[float] = None,
         reduce_output: bool = True,
     ) -> None:
         super().__init__()
@@ -275,6 +276,7 @@ class Network(torch.nn.Module):
         self.node_attr_n_kind = node_attr_n_kind
         self.node_attr_emb_dim = node_attr_emb_dim
         self.time_emb_dim = time_emb_dim
+        self.radius_decay = radius_decay
         self.reduce_output = reduce_output
 
         self.irreps_in = o3.Irreps(irreps_in) if irreps_in is not None else None
@@ -377,7 +379,10 @@ class Network(torch.nn.Module):
         )
 
     def forward(
-        self, data: Dict[str, torch.Tensor], time: Optional[torch.Tensor] = None
+        self,
+        data: Dict[str, torch.Tensor],
+        pos: Optional[torch.Tensor] = None,
+        time: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """evaluate the network
 
@@ -389,17 +394,28 @@ class Network(torch.nn.Module):
             - ``x`` the input features of the nodes, optional
             - ``z`` the attributes of the nodes, for instance the atom type, optional
             - ``batch`` the graph to which the node belong, optional
-        time : list of integers (optional)
+        pos : `torch.Tensor` (optional)
+            prio positions
+        time : `torch.Tensor` (optional)
         """
+        if pos is None:
+            pos = data["pos"]
+
         if "batch" in data:
             batch = data["batch"]
         else:
-            batch = data["pos"].new_zeros(data["pos"].shape[0], dtype=torch.long)
+            batch = pos.new_zeros(pos.shape[0], dtype=torch.long)
 
-        edge_index = radius_graph(data["pos"], self.max_radius, batch)
+        if time is not None:
+            max_radius = float(
+                self.max_radius * torch.exp(-time[0] / self.radius_decay)
+            )
+        else:
+            max_radius = self.max_radius
+        edge_index = radius_graph(pos, max_radius, batch)
         edge_src = edge_index[0]
         edge_dst = edge_index[1]
-        edge_vec = data["pos"][edge_src] - data["pos"][edge_dst]
+        edge_vec = pos[edge_src] - pos[edge_dst]
         edge_sh = o3.spherical_harmonics(
             self.irreps_edge_attr, edge_vec, True, normalization="component"
         )
@@ -407,12 +423,12 @@ class Network(torch.nn.Module):
         edge_length_embedded = soft_one_hot_linspace(
             x=edge_length,
             start=0.0,
-            end=self.max_radius,
+            end=max_radius,
             number=self.number_of_basis,
             basis="gaussian",
             cutoff=False,
         ).mul(self.number_of_basis**0.5)
-        edge_attr = smooth_cutoff(edge_length / self.max_radius)[:, None] * edge_sh
+        edge_attr = smooth_cutoff(edge_length / max_radius)[:, None] * edge_sh
 
         if self.input_has_node_in and "x" in data:
             assert self.irreps_in is not None
@@ -420,19 +436,19 @@ class Network(torch.nn.Module):
         elif time is not None:
             t = self.time_mlp(time)
             scale, shift = t.chunk(2, dim=1)
-            x = data["pos"].new_ones((data["pos"].shape[0], self.time_emb_dim))
+            x = pos.new_ones((pos.shape[0], self.time_emb_dim))
             x = x * (1 + scale) + shift
             # x = x.reshape((x.shape.numel(), 1))
         else:
             assert self.irreps_in is None
-            x = data["pos"].new_ones((data["pos"].shape[0], 1))
+            x = pos.new_ones((pos.shape[0], 1))
 
         if self.input_has_node_attr and "z" in data and self.node_attr_emb_dim:
             z = self.node_attr_emb(data["z"])
             z = torch.squeeze(z)
         else:
             assert self.irreps_node_attr == o3.Irreps("0e")
-            z = data["pos"].new_ones((data["pos"].shape[0], 1))
+            z = pos.new_ones((pos.shape[0], 1))
 
         scalar_z = self.ext_z(z)
         edge_features = torch.cat(
@@ -468,9 +484,24 @@ class e3_diffusion(L.LightningModule):
         self._init_model()
 
     def forward(
-        self, data: Dict[str, torch.Tensor], time: Optional[torch.Tensor] = None
+        self,
+        data: Dict[str, torch.Tensor],
+        pos: Optional[torch.Tensor] = None,
+        time: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        results = self.model(data, time)
+        """evaluate the network
+
+        Parameters:
+        ----------
+        data : `torch_geometric.data.Data` or dict
+            data object containing
+            - ``pos`` the position of the nodes (atoms)
+            - ``x`` the input features of the nodes, optional
+            - ``z`` the attributes of the nodes, for instance the atom type, optional
+            - ``batch`` the graph to which the node belong, optional
+        time : `torch.Tensor` (optional)
+        """
+        results = self.model(data, pos, time=time)
         torch.cuda.empty_cache()
         return results
 
@@ -478,18 +509,20 @@ class e3_diffusion(L.LightningModule):
         for _, param in self.named_parameters():
             param.data.fill_(self.weight_fill)
 
-    def _get_loss(self, data):
-        predicted = self.forward(data)
-        return F.mse_loss(data.pos, predicted)
-        # device = self.device
-        # noise = torch.randn_like(data["pos"])
+    def _get_loss(self, data, time=None):
+        device = self.device
+        noise = torch.randn_like(data["pos"])
 
-        # time = torch.randint(self.time_step, (1,))
-        # x_noisy = self.diffu_sampler.q_sample(data["pos"], int(time[0]), noise=noise)
-        # data["pos"] = x_noisy
-        # predicted_noise = self.forward(data.to(device), time.to(device))
-
-        # return F.mse_loss(noise, predicted_noise) / len(noise)
+        if time is None:
+            time = torch.randint(self.time_step, (1,))
+        else:
+            time = torch.Tensor(time).to(device)
+        x_noisy = self.diffu_sampler.q_sample(data["pos"], int(time[0]), noise=noise)
+        predicted_noise = self.forward(
+            data.to(device), x_noisy.to(device), time=time.to(device)
+        )
+        self.log("sample time", int(time[0]))
+        return F.mse_loss(noise, predicted_noise) / len(noise)
 
     def configure_optimizers(self) -> Dict:
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
