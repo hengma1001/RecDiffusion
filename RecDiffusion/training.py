@@ -1,18 +1,28 @@
-import torch
 import lightning as L
+import torch
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 
 
-def train_diffu(model, train_loader, val_loader, test_loader, n_gpus=1):
+def train_diffu(
+    model,
+    train_loader,
+    val_loader,
+    test_loader,
+    n_gpus=1,
+    max_epochs=1,
+    every_n_epochs=None,
+    **kwargs
+):
     trainer = L.Trainer(
         default_root_dir="./rec_diffu",
         accelerator="auto",
         devices=n_gpus,
-        max_epochs=500,
+        max_epochs=max_epochs,
         callbacks=[
-            ModelCheckpoint(save_weights_only=True),
+            ModelCheckpoint(save_weights_only=True, every_n_epochs=every_n_epochs),
             LearningRateMonitor("epoch"),
         ],
+        **kwargs,
     )
     trainer.logger._log_graph = (
         True  # If True, we plot the computation graph in tensorboard
