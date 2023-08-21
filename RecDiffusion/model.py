@@ -413,6 +413,7 @@ class Network(torch.nn.Module):
         else:
             max_radius = self.max_radius
         edge_index = radius_graph(pos, max_radius, batch)
+        # print(max_radius, len(edge_index[0]))
         edge_src = edge_index[0]
         edge_dst = edge_index[1]
         edge_vec = pos[edge_src] - pos[edge_dst]
@@ -481,7 +482,7 @@ class e3_diffusion(L.LightningModule):
         self.diffu_sampler = diffusion_sampler(time_step, scheduler)
         self.weight_fill = weight_fill
         self.model = Network(**model_kwargs)
-        self._init_model()
+        # self._init_model()
 
     def forward(
         self,
@@ -524,7 +525,7 @@ class e3_diffusion(L.LightningModule):
             x_noisy.to(device),
         )
         self.log("sample time", int(time[0]))
-        return F.mse_loss(noise, predicted_noise) / len(noise)
+        return F.mse_loss(noise, predicted_noise) * 1000 / len(noise)
 
     def configure_optimizers(self) -> Dict:
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)

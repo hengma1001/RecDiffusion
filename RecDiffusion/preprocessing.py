@@ -61,7 +61,7 @@ def position_to_pdb(
 
 
 def pdbs_to_dbs(comp_paths, **kwargs):
-    prot_pdbs, lig_mols = path_to_pdb(comp_paths)
+    prot_pdbs, lig_mols = paths_to_pdbs(comp_paths)
     dbs = [
         pdb_to_dict(prot, lig, **kwargs)
         for prot, lig in tqdm(zip(prot_pdbs, lig_mols), total=len(prot_pdbs))
@@ -84,16 +84,22 @@ def pdbs_to_dbs(comp_paths, **kwargs):
     return dbs_refined, full_voca_size, label_encoder
 
 
-def path_to_pdb(comp_paths):
+def path_to_pdb(comp_path):
+    label = os.path.basename(comp_path)
+    prot_pdb = f"{comp_path}/{label}_protein.pdb"
+    lig_mol = f"{comp_path}/{label}_ligand.mol2"
+
+    assert os.path.exists(prot_pdb), f"Missing protein {prot_pdb}"
+    assert os.path.exists(lig_mol), f"Missing ligand {lig_mol}"
+
+    return prot_pdb, lig_mol
+
+
+def paths_to_pdbs(comp_paths):
     prot_pdbs = []
     lig_mols = []
     for comp_path in comp_paths:
-        label = os.path.basename(comp_path)
-        prot_pdb = f"{comp_path}/{label}_protein.pdb"
-        lig_mol = f"{comp_path}/{label}_ligand.mol2"
-
-        assert os.path.exists(prot_pdb), f"Missing protein {prot_pdb}"
-        assert os.path.exists(lig_mol), f"Missing ligand {lig_mol}"
+        prot_pdb, lig_mol = path_to_pdb(comp_path)
 
         prot_pdbs.append(prot_pdb)
         lig_mols.append(lig_mol)
