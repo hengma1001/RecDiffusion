@@ -161,3 +161,6 @@ cython_debug/
 
 data/
 *.pdb
+examples/rec_diffu/*
+examples/wandb
+examples/rec_diffusion
