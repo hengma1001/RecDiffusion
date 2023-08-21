@@ -1,8 +1,4 @@
 import glob
-import torch
-import e3nn
-
-import MDAnalysis as mda
 import sys
 
 sys.path.append("../")

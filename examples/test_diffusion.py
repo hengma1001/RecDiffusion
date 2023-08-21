@@ -1,15 +1,17 @@
-import torch
-import e3nn
 import glob
 import sys
 
+import e3nn
+import torch
+
 sys.path.append("../")
+
+from typing import Any, Dict
+
+from pydantic import BaseModel, root_validator
 
 from RecDiffusion.model import e3_diffusion
 from RecDiffusion.preprocessing import pdbs_to_dbs
-from typing import Dict, Any
-from pydantic import BaseModel, root_validator
-
 
 # class Settings(BaseModel):
 #     irreps_in: e3nn.o3.Irreps = e3nn.o3.Irreps("16x0e")
@@ -29,7 +31,9 @@ prot_pdb = "../data/refined-set/2wed/2wed_protein.pdb"
 lig_mol2 = "../data/refined-set/2wed/2wed_ligand.mol2"
 
 comp_paths = glob.glob("../data/refined-set/2w*")
-labels, full_voca_size = pdbs_to_dbs(comp_paths)
+labels, full_voca_size = pdbs_to_dbs(
+    comp_paths, prot_sel="protein and not name H*", node_attr=True
+)
 
 model_kwargs = {
     "irreps_in": "16x0e",  # no input features
