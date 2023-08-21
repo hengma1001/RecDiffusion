@@ -1,10 +1,16 @@
 import numpy as np
-from tqdm import tqdm
-
 import torch
 import torch.nn.functional as F
+from tqdm import tqdm
 
 from .utils import tensor_to_dict
+
+# def radius_graph(pos, r_max, batch) -> torch.Tensor:
+#     # naive and inefficient version of torch_cluster.radius_graph
+#     r = torch.cdist(pos, pos)
+#     index = ((r < r_max) & (r > 0)).nonzero().T
+#     index = index[:, batch[index[0]] == batch[index[1]]]
+#     return index
 
 
 def cosine_beta_schedule(timesteps: int, s: float = 0.008):
@@ -86,27 +92,31 @@ class diffusion_sampler(object):
         return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
     @torch.no_grad()
-    def p_sample(self, model: torch.nn.Module, data: dict, t: int) -> torch.tensor:
+    def p_sample(
+        self, model: torch.nn.Module, data: dict, pose: torch.Tensor, t: int
+    ) -> torch.tensor:
         device = next(model.parameters()).device
-        x = data["pos"]
-        t_tensor = torch.Tensor([t], device=device)
-        betas_t = extract(self.betas, t, x.shape)
+        if pose is None:
+            pose = data["pos"]
+        t_tensor = torch.Tensor([t]).to(device)
+        betas_t = extract(self.betas, t, pose.shape)
         sqrt_one_minus_alphas_cumprod_t = extract(
-            self.sqrt_one_minus_alphas_cumprod, t, x.shape
+            self.sqrt_one_minus_alphas_cumprod, t, pose.shape
         )
-        sqrt_recip_alphas_t = extract(self.sqrt_recip_alphas, t, x.shape)
+        sqrt_recip_alphas_t = extract(self.sqrt_recip_alphas, t, pose.shape)
 
         # Equation 11 in the paper
         # Use our model (noise predictor) to predict the mean
         model_mean = sqrt_recip_alphas_t * (
-            x - betas_t * model(data, t_tensor) / sqrt_one_minus_alphas_cumprod_t
+            pose
+            - betas_t * model(data, t_tensor, pose) / sqrt_one_minus_alphas_cumprod_t
         )
 
         if t == 0:
             return model_mean
         else:
-            posterior_variance_t = extract(self.posterior_variance, t, x.shape)
-            noise = torch.randn_like(x)
+            posterior_variance_t = extract(self.posterior_variance, t, pose.shape)
+            noise = torch.randn_like(pose)
             # Algorithm 2 line 4:
             return model_mean + torch.sqrt(posterior_variance_t) * noise
 
@@ -118,15 +128,20 @@ class diffusion_sampler(object):
 
         # start from pure noise (for each example in the batch)
         poses = torch.zeros(self.time_step + 1, *input_pose.shape).to(device)
-        poses[0] = input_pose
+        poses[-1] = input_pose
 
         for i in tqdm(
             reversed(range(0, self.time_step)),
             desc="sampling loop time step",
             total=self.time_step,
         ):
-            data["pos"] = poses[i]
-            poses[i + 1] = self.p_sample(model, data, i)
+            # e_ind = radius_graph(
+            #     poses[i],
+            #     1.5,
+            #     batch=poses[i].new_zeros(poses[i].shape[0], dtype=torch.long),
+            # )
+            # print(len(e_ind[0]))
+            poses[i] = self.p_sample(model, data, poses[i + 1], i)
         return poses
 
     @torch.no_grad()
@@ -136,6 +151,7 @@ class diffusion_sampler(object):
         data = tensor_to_dict(input_pose)
         return self.p_sample_loop(model, data)
 
+    @torch.no_grad()
     def sample_pose(self, model, data):
         assert data["pos"].shape[-1] == 3
-        return self.p_sample_loop(model, data)
+        return self.p_sample_loop(model, data.to(model.device))
